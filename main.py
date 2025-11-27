@@ -19,7 +19,6 @@ WHATSAPP_API_KEY = os.getenv('WHATSAPP_API_KEY')
 PHONE_NUMBER     = os.getenv('PHONE_NUMBER')
 HKD_PORTFOLIO    = float(os.getenv('HKD_PORTFOLIO', '3300000'))
 RISK_HKD         = HKD_PORTFOLIO * 0.005
-# ===============================================
 
 def send_whatsapp(msg):
     if not WHATSAPP_API_KEY or not PHONE_NUMBER:
@@ -34,20 +33,24 @@ def send_whatsapp(msg):
 # ==================== TICKERS ====================
 def get_all_tickers():
     us = []
-    # US tickers
     try:
-        nasdaq = pd.read_csv("https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/us_stock_symbols/nasdaq_full_tickers.csv")['Symbol'].tolist()
-        nyse   = pd.read_csv("https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/us_stock_symbols/nyse_full_tickers.csv")['Symbol'].tolist()
-        us = [t for t in nasdaq + nyse if isinstance(t, str) and t.strip()]
-    except:
-        us = []
-    # HK tickers
+        nasdaq_url = "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/us_stock_symbols/nasdaq_full_tickers.csv"
+        nyse_url   = "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/us_stock_symbols/nyse_full_tickers.csv"
+        try:
+            nasdaq = pd.read_csv(nasdaq_url)['Symbol'].tolist()
+            nyse   = pd.read_csv(nyse_url)['Symbol'].tolist()
+            us = [t for t in nasdaq + nyse if isinstance(t, str) and t.strip()]
+        except:
+            pass
+
     hk = []
     try:
-        df = pd.read_csv("https://raw.githubusercontent.com/rreichel3/HK-Stock-Symbols/main/hk_stock_symbols.csv")
+        url = "https://raw.githubusercontent.com/rreichel3/HK-Stock-Symbols/main/hk_stock_symbols.csv"
+        df = pd.read_csv(url)
         hk = [f"{row.Symbol}.HK" for row in df.itertuples() if str(row.Symbol).isdigit()]
     except:
         hk = ['0700.HK', '9988.HK', '3690.HK']
+
     return us + hk
 
 # ==================== MINERVINI PIVOT (1.2× volume) ====================
@@ -64,10 +67,10 @@ def minervini_pivot_scan(tickers):
             price  = df['Close'].iloc[-1]
             sma50  = df['Close'].rolling(50).mean().iloc[-1]
             sma200 = df['Close'].rolling(200).mean().iloc[-1]
+
             if not (price > sma50 > sma200):
                 continue
 
-            # Simple but effective pivot: breakout on 1.2× volume
             base_high = df['High'][:-5].max()
             today_high = df['High'].iloc[-1]
             today_vol  = df['Volume'].iloc[-1]
@@ -82,7 +85,6 @@ def minervini_pivot_scan(tickers):
 
                 shares = math.floor(RISK_HKD / (buy_point - stop))
                 if shares < 20:
-                    # too small
                     continue
                 weight = round(shares * buy_point / HKD_PORTFOLIO * 100, 1)
 
@@ -99,7 +101,10 @@ def minervini_pivot_scan(tickers):
 # ==================== O'NEIL CANSLIM ====================
 def canslim_scan(tickers):
     leaders = []
-    spy_hist = yf.download("SPY", period="6mo", progress=False)
+    try:
+        spy_hist = yf.download("SPY", period="6mo", progress=False)
+    except:
+        return leaders
 
     for i, t in enumerate(tickers):
         if i % 800 == 0 and i > 0:
@@ -119,14 +124,13 @@ def canslim_scan(tickers):
             if price < sma50 * 0.75:
                 continue
 
-            # Relative Strength proxy (3-month)
+            # 3-month relative strength
             if len(df) > 63:
                 ret_stock = price / df['Close'].iloc[-63]
                 ret_spy   = spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[-63]
                 if ret_stock < ret_spy * 1.2:
                     continue
 
-            # Recent volume increase
             vol50 = df['Volume'].tail(50).mean()
             if df['Volume'].tail(3).mean() < vol50 * 1.2:
                 continue
@@ -139,8 +143,7 @@ def canslim_scan(tickers):
         time.sleep(0.05)
 
     leaders.sort(key=lambda x: float(x[4][:-1]), reverse=True)
-    return leaders = leaders[:30]
-    return leaders
+    return leaders[:30]
 
 # ==================== TABLES ====================
 def minervini_table(rows):
@@ -174,17 +177,15 @@ def full_scan():
     send_whatsapp(f"DOUBLE SCAN STARTED — {now_hk()}")
     tickers = get_all_tickers()
 
-    # 1. Minervini
     minervini = minervini_pivot_scan(tickers)
-    msg1 = f"*MINERVINI PIVOTS (1.2× vol) — {now_hk()}*\n{len(minervini)} monsters\n\n```{minervini_table(minervini)}```"
+    msg1 = f"*MINERVINI PIVOTS (1.2× vol) — {now_hk()}*\n{len(minervini)} setups\n\n```{minervini_table(minervini)}```"
     send_whatsapp(msg1)
 
-    # 2. CANSLIM
     canslim = canslim_scan(tickers)
     msg2 = f"*O'NEIL CANSLIM LEADERS — {now_hk()}*\n{len(canslim)} leaders\n\n```{canslim_table(canslim)}```"
     send_whatsapp(msg2)
 
-    send_whatsapp("Both scans finished!")
+    send_whatsapp("Both scans completed!")
 
 # ==================== FLASK ====================
 from flask import Flask
@@ -195,11 +196,8 @@ def home():
     threading.Thread(target=full_scan).start()
     return f"<h1>Double Scanner Running… Check WhatsApp!</h1><p>{now_hk()}</p>"
 
-# Run on startup + daily
-full_scan()
-schedule.every().day.at("08:25").do(full_scan)
-
-print("DOUBLE ELITE SCANNER LIVE — NO SYNTAX ERRORS")
-while True:
-    schedule.run_pending()
-    time.sleep(60)
+# Run on startup + daily schedule
+if __name__ == "__main__":
+    full_scan()
+    schedule.every().day.at("08:25").do(full_scan)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
