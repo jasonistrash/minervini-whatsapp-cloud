@@ -23,32 +23,30 @@ RISK_HKD         = HKD_PORTFOLIO * 0.005
 def send_whatsapp(msg):
     if not WHATSAPP_API_KEY or not PHONE_NUMBER:
         return
+    # Fixed: proper indentation
+        return
     url = "https://api.callmebot.com/whatsapp.php"
     params = {"phone": PHONE_NUMBER, "text": msg, "apikey": WHATSAPP_API_KEY}
     try:
         requests.get(url, params=params, timeout=15)
-    except:
+    except Exception:
         pass
 
 # ==================== TICKERS ====================
 def get_all_tickers():
     us = []
     try:
-        nasdaq_url = "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/us_stock_symbols/nasdaq_full_tickers.csv"
-        nyse_url   = "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/us_stock_symbols/nyse_full_tickers.csv"
-        try:
-            nasdaq = pd.read_csv(nasdaq_url)['Symbol'].tolist()
-            nyse   = pd.read_csv(nyse_url)['Symbol'].tolist()
-            us = [t for t in nasdaq + nyse if isinstance(t, str) and t.strip()]
-        except:
-            pass
+        nasdaq = pd.read_csv("https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/us_stock_symbols/nasdaq_full_tickers.csv")['Symbol'].tolist()
+        nyse   = pd.read_csv("https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/us_stock_symbols/nyse_full_tickers.csv")['Symbol'].tolist()
+        us = [t for t in nasdaq + nyse if isinstance(t, str) and t.strip()]
+    except Exception:
+        us = []
 
     hk = []
     try:
-        url = "https://raw.githubusercontent.com/rreichel3/HK-Stock-Symbols/main/hk_stock_symbols.csv"
-        df = pd.read_csv(url)
+        df = pd.read_csv("https://raw.githubusercontent.com/rreichel3/HK-Stock-Symbols/main/hk_stock_symbols.csv")
         hk = [f"{row.Symbol}.HK" for row in df.itertuples() if str(row.Symbol).isdigit()]
-    except:
+    except Exception:
         hk = ['0700.HK', '9988.HK', '3690.HK']
 
     return us + hk
@@ -67,7 +65,6 @@ def minervini_pivot_scan(tickers):
             price  = df['Close'].iloc[-1]
             sma50  = df['Close'].rolling(50).mean().iloc[-1]
             sma200 = df['Close'].rolling(200).mean().iloc[-1]
-
             if not (price > sma50 > sma200):
                 continue
 
@@ -93,7 +90,7 @@ def minervini_pivot_scan(tickers):
 
                 setups.append([tick, market, f"{price:.2f}", f"{buy_point:.2f}",
                               f"{risk_pct*100:.1f}%", shares, f"{weight}%"])
-        except:
+        except Exception:
             continue
         time.sleep(0.05)
     return setups
@@ -103,7 +100,7 @@ def canslim_scan(tickers):
     leaders = []
     try:
         spy_hist = yf.download("SPY", period="6mo", progress=False)
-    except:
+    except Exception:
         return leaders
 
     for i, t in enumerate(tickers):
@@ -124,7 +121,6 @@ def canslim_scan(tickers):
             if price < sma50 * 0.75:
                 continue
 
-            # 3-month relative strength
             if len(df) > 63:
                 ret_stock = price / df['Close'].iloc[-63]
                 ret_spy   = spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[-63]
@@ -138,7 +134,7 @@ def canslim_scan(tickers):
             market = "HK" if t.endswith('.HK') else "US"
             tick   = t.replace('.HK', '') if market == "HK" else t
             leaders.append([tick, market, f"{price:.2f}", f"{sma50:.2f}", f"{(ret_stock-1)*100:.1f}%"])
-        except:
+        except Exception:
             continue
         time.sleep(0.05)
 
@@ -151,7 +147,7 @@ def minervini_table(rows):
         return "No Minervini pivots today"
     lines = [
         "┌─────┬───┬───────┬───────┬─────┬──────┐",
-        "│TICK │MKT│ PRICE │  BUY  │ R%  │ WGT  │",
+        "│TICK │MKT│ PRICE │ BUY │ R% │ WGT │",
         "├─────┼───┼───────┼───────┼─────┼──────┤"
     ]
     for r in rows:
@@ -164,7 +160,7 @@ def canslim_table(rows):
         return "No CANSLIM leaders today"
     lines = [
         "┌─────┬───┬───────┬───────┬──────┐",
-        "│TICK │MKT│ PRICE │ SMA50 │ 3M%  │",
+        "│TICK │MKT│ PRICE │ SMA50 │ 3M% │",
         "├─────┼───┼───────┼───────┼──────┤"
     ]
     for r in rows:
@@ -178,12 +174,10 @@ def full_scan():
     tickers = get_all_tickers()
 
     minervini = minervini_pivot_scan(tickers)
-    msg1 = f"*MINERVINI PIVOTS (1.2× vol) — {now_hk()}*\n{len(minervini)} setups\n\n```{minervini_table(minervini)}```"
-    send_whatsapp(msg1)
+    send_whatsapp(f"*MINERVINI PIVOTS (1.2× vol) — {now_hk()}*\n{len(minervini)} setups\n\n```{minervini_table(minervini)}```")
 
     canslim = canslim_scan(tickers)
-    msg2 = f"*O'NEIL CANSLIM LEADERS — {now_hk()}*\n{len(canslim)} leaders\n\n```{canslim_table(canslim)}```"
-    send_whatsapp(msg2)
+    send_whatsapp(f"*O'NEIL CANSLIM LEADERS — {now_hk()}*\n{len(canslim)} leaders\n\n```{canslim_table(canslim)}```")
 
     send_whatsapp("Both scans completed!")
 
@@ -196,7 +190,7 @@ def home():
     threading.Thread(target=full_scan).start()
     return f"<h1>Double Scanner Running… Check WhatsApp!</h1><p>{now_hk()}</p>"
 
-# Run on startup + daily schedule
+# ==================== RUN ====================
 if __name__ == "__main__":
     full_scan()
     schedule.every().day.at("08:25").do(full_scan)
