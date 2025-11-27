@@ -85,7 +85,7 @@ def is_valid_pivot_breakout(df, lookback=70):
     today_vol  = recent['Volume'].iloc[-1]
     avg_vol    = recent['Volume'].tail(50).mean()
 
-    if today_high >= base_high and today_vol >= avg_vol * 1.5:
+    if today_high >= base_high and today_vol >= avg_vol * 1.3:
         return True, base_high * 1.005  # buy slightly above pivot
 
     return False, 0
